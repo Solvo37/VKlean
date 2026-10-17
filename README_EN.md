@@ -17,7 +17,7 @@ Open-source Morphe patches and signed ARM64 builds of VK Video with selected adv
 
 1. For initial installation, uninstall only the official **VK Video** (`com.vk.vkvideo`). Keep the standard VK app installed.
 2. Install the signed APK from Releases. Future VKlean APKs retain the same project signing key.
-3. Optionally import the project into [Obtainium](https://github.com/ImranR98/Obtainium). Use repository URL `https://github.com/Solvo37/VKlean` and APK filter `^VK-Video-.*-patched\\.apk$`.
+3. Optionally import the project into [Obtainium](https://github.com/ImranR98/Obtainium). Use repository URL `https://github.com/Solvo37/VKlean` and APK filter `^VK-Video-.*-patched\.apk$`.
 
 The automated builder checks RuStore and APKPure for newer upstream APKs and uses compatibility checks. A green static build alone does not prove the app works correctly when logged in.
 
