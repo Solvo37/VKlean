@@ -154,7 +154,7 @@ def dex_primary_clips_predicate_owners(data: bytes) -> set[str]:
         if index not in strings:
             offset = u32(data, string_ids_off + index * 4)
             _, pos = read_uleb128(data, offset)
-            end = data.find(b"\\x00", pos)
+            end = data.find(b"\x00", pos)
             if end < 0:
                 raise DexError("unterminated DEX descriptor")
             strings[index] = data[pos:end].decode("ascii")
