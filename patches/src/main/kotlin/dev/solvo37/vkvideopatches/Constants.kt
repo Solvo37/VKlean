@@ -7,7 +7,7 @@ import app.morphe.patcher.patch.Compatibility
 internal object Constants {
     // GitHub Actions rewrites this to the newest version that passed the full
     // compatibility gate before compiling the public Morphe bundle.
-    private const val VERIFIED_VERSION = "1.165"
+    private const val VERIFIED_VERSION = "1.166"
 
     val VK_VIDEO = Compatibility(
         name = "VK Video",
