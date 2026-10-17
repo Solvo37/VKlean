@@ -484,8 +484,6 @@ jobs:
             jq -e --arg patch "$patch" 'any(.appliedPatches[]?; .name == $patch)' dist/patch-result.json >/dev/null \
               || { echo "::error::Required patch missing from Morphe report: $patch" >&2; exit 1; }
           done < <(jq -r '.patches[]' patches-list.json)
-            jq -e --arg patch "$patch"               'any(.appliedPatches[]?; .name == $patch)'               dist/patch-result.json >/dev/null               || { echo "Required patch missing from Morphe report: $patch" >&2; exit 1; }
-          done
 
           aapt dump xmltree dist/unsigned-patched.apk AndroidManifest.xml > dist/manifest-xmltree.txt
           python ci/verify_manifest.py dist/manifest-xmltree.txt
