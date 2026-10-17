@@ -236,6 +236,29 @@ internal object ClipSdkAdVideoMapperFingerprint : Fingerprint(
     )
 )
 
+// The full-screen Clips ad predicate is R8-obfuscated and changes owners between releases:
+// 1.165 -> d01.c.c(SdkVideoFile); 1.166 -> e01.c.c(SdkVideoFile).
+// Match its semantics instead of a stale owner/name: it checks BOTH ordinary
+// SdkVideoAdInfo and ORD ad metadata on SdkVideoFile. Fail the patch build if
+// either getter or the unique predicate cannot be resolved.
+internal object ClipSdkVideoAdMarkerPredicateFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
+    returnType = "Z",
+    parameters = listOf("Lcom/vk/clips/sdk/shared/api/deps/video/SdkVideoFile;"),
+    filters = listOf(
+        methodCall(
+            definingClass = "Lcom/vk/clips/sdk/shared/api/deps/video/SdkVideoFile;",
+            parameters = emptyList(),
+            returnType = "Lcom/vk/clips/sdk/shared/api/deps/video/SdkVideoAdInfo;"
+        ),
+        methodCall(
+            definingClass = "Lcom/vk/clips/sdk/shared/api/deps/video/SdkVideoFile;",
+            parameters = emptyList(),
+            returnType = "Lcom/vk/clips/sdk/models/ads/SdkOrdAdsInfo;"
+        )
+    )
+)
+
 internal object ClipSdkAdVideoDefaultMapperFingerprint : Fingerprint(
     classFingerprint = ClipSdkAdVideoMapperFingerprint,
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),

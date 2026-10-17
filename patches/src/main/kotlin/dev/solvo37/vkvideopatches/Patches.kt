@@ -414,11 +414,19 @@ val filterClipSdkAdsPatch = bytecodePatch(
     compatibleWith(VK_VIDEO)
 
     execute {
+        // Look up the SDK's own combined SdkVideoAdInfo/ORD predicate using stable
+        // getter signatures. The R8-generated helper name changes every release
+        // (1.165: Ld01/c;->c, 1.166: Le01/c;->c). Never hard-code it in smali:
+        // a stale reference compiles but crashes the entire Clips feed at runtime.
+        val adPredicateMethod = ClipSdkVideoAdMarkerPredicateFingerprint.method
+        val adPredicateReference =
+            "${adPredicateMethod.definingClass}->${adPredicateMethod.name}(Lcom/vk/clips/sdk/shared/api/deps/video/SdkVideoFile;)Z"
+
         ClipSdkAdVideoMapperFingerprint.method.apply {
             addInstructionsWithLabels(
                 0,
                 """
-                    invoke-static {p1}, Lzz0/c;->f(Lcom/vk/clips/sdk/shared/api/deps/video/SdkVideoFile;)Z
+                    invoke-static {p1}, $adPredicateReference
                     move-result v0
                     if-eqz v0, :original
 
