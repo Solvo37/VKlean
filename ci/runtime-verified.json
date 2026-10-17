@@ -1,0 +1,13 @@
+{
+  "entries": [
+    {
+      "version_name": "1.166",
+      "version_code": 53253,
+      "verified_at": "2026-10-18",
+      "device": "Samsung Galaxy S24 Ultra (SM-S928B)",
+      "test_summary": "Реальное устройство: вкладка Клипы, обычные видео и перемотка, главная, Моё, фон/возврат и перезапуск; в проверке реклама не наблюдалась",
+      "evidence": "https://github.com/Solvo37/VKlean/issues/21#issuecomment-6238752450",
+      "diagnostic_run": "https://github.com/Solvo37/VKlean/actions/runs/39057849003"
+    }
+  ]
+}
