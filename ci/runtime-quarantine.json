@@ -1,6 +1,16 @@
 {
   "entries": [
     {
+      "version_code": 52788,
+      "version_name": "1.165",
+      "reason": "Known patched VK Video 1.165.1 (52788): user reports black screen opening dedicated Clips tab; pending device logcat + isolation"
+    },
+    {
+      "version_code": 52789,
+      "version_name": "1.165",
+      "reason": "Alternate upstream VK Video 1.165 (52789), untested with VKlean and same Clips regression risk"
+    },
+    {
       "version_code": 53256,
       "version_name": "1.166",
       "reason": "2026-10-18: new upstream pending real-device verification of dedicated VK Clips tab; do not auto-publish before smoke test"
