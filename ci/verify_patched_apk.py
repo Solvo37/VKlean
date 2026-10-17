@@ -20,6 +20,7 @@ import zipfile
 ORIGINAL_NATIVE_PATTERN = bytes.fromhex("1f1c0072e80700f900050054")
 PATCHED_NATIVE_PATTERN = bytes.fromhex("1f1c0072e80700f900040054")
 APPLICATION_DESCRIPTOR = "Lcom/vk/video/app/VkVideoApplication;"
+CLIPS_VIDEO_FILE_DESCRIPTOR = "Lcom/vk/clips/sdk/shared/api/deps/video/SdkVideoFile;"
 V1_SIGNATURE_RE = re.compile(r"^META-INF/(?:MANIFEST\.MF|[^/]+\.(?:SF|RSA|DSA|EC))$", re.I)
 
 
@@ -119,6 +120,76 @@ def dex_class_definitions(data: bytes) -> set[str]:
     return classes
 
 
+def dex_primary_clips_predicate_owners(data: bytes) -> set[str]:
+    """Identify R8-obfuscated Clips ad helper owners referenced from primary DEX.
+
+    The VKlean STRIP_FAST patcher moves touched code into classes.dex. A stale
+    invoke-static target can pass all ordinary APK checks yet crash Clips with
+    NoClassDefFoundError, as happened with Lzz0/c; in 1.165.
+    """
+    string_ids_size = u32(data, 0x38)
+    string_ids_off = u32(data, 0x3C)
+    type_ids_size = u32(data, 0x40)
+    type_ids_off = u32(data, 0x44)
+    proto_ids_size = u32(data, 0x48)
+    proto_ids_off = u32(data, 0x4C)
+    method_ids_size = u32(data, 0x58)
+    method_ids_off = u32(data, 0x5C)
+
+    for offset, count, width, label in [
+        (string_ids_off, string_ids_size, 4, "strings"),
+        (type_ids_off, type_ids_size, 4, "types"),
+        (proto_ids_off, proto_ids_size, 12, "protos"),
+        (method_ids_off, method_ids_size, 8, "methods"),
+    ]:
+        if offset + count * width > len(data):
+            raise DexError(f"{label} table out of bounds")
+
+    strings: dict[int, str] = {}
+    types: dict[int, str] = {}
+
+    def get_string(index: int) -> str:
+        if index >= string_ids_size:
+            raise DexError(f"invalid DEX string index {index}")
+        if index not in strings:
+            offset = u32(data, string_ids_off + index * 4)
+            _, pos = read_uleb128(data, offset)
+            end = data.find(b"\\x00", pos)
+            if end < 0:
+                raise DexError("unterminated DEX descriptor")
+            strings[index] = data[pos:end].decode("ascii")
+        return strings[index]
+
+    def get_type(index: int) -> str:
+        if index >= type_ids_size:
+            raise DexError(f"invalid DEX type index {index}")
+        if index not in types:
+            types[index] = get_string(u32(data, type_ids_off + index * 4))
+        return types[index]
+
+    relevant_protos = set()
+    for index in range(proto_ids_size):
+        _, return_type, parameters_off = struct.unpack_from(
+            "<III", data, proto_ids_off + index * 12
+        )
+        if get_type(return_type) != "Z" or parameters_off == 0:
+            continue
+        if u32(data, parameters_off) != 1:
+            continue
+        parameter_type = struct.unpack_from("<H", data, parameters_off + 4)[0]
+        if get_type(parameter_type) == CLIPS_VIDEO_FILE_DESCRIPTOR:
+            relevant_protos.add(index)
+
+    owners: set[str] = set()
+    for index in range(method_ids_size):
+        declaring_type, proto_index, _ = struct.unpack_from(
+            "<HHI", data, method_ids_off + index * 8
+        )
+        if proto_index in relevant_protos:
+            owners.add(get_type(declaring_type))
+    return owners
+
+
 def count_pattern(data: bytes, pattern: bytes) -> int:
     count = 0
     start = 0
@@ -163,14 +234,40 @@ def main() -> int:
             failures.append("APK contains no classes*.dex entries")
 
         app_definitions: list[str] = []
+        all_classes: set[str] = set()
+        primary_dex: bytes | None = None
         dex_errors: dict[str, str] = {}
         for name in dex_names:
             try:
-                classes = dex_class_definitions(zf.read(name))
+                data = zf.read(name)
+                classes = dex_class_definitions(data)
+                all_classes.update(classes)
+                if name == "classes.dex":
+                    primary_dex = data
                 if APPLICATION_DESCRIPTOR in classes:
                     app_definitions.append(name)
             except DexError as exc:
                 dex_errors[name] = str(exc)
+
+        # Check every primary-DEX boolean ad predicate taking SdkVideoFile
+        # against actual class definitions from all DEX files, not references.
+        # The prior 1.165 APK contained a call to nonexistent Lzz0/c; here.
+        if primary_dex is None:
+            failures.append("missing primary classes.dex for Clips predicate validation")
+        else:
+            try:
+                clip_predicate_owners = dex_primary_clips_predicate_owners(primary_dex)
+                unresolved = sorted(clip_predicate_owners - all_classes)
+                report["clips_predicate"] = {
+                    "owner_references": sorted(clip_predicate_owners),
+                    "unresolved_owners": unresolved,
+                }
+                if not clip_predicate_owners:
+                    failures.append("no Clips SDK video predicate references in primary DEX")
+                if unresolved:
+                    failures.append("unresolved Clips SDK video predicate class(es): " + ", ".join(unresolved))
+            except (DexError, UnicodeDecodeError) as exc:
+                failures.append(f"cannot validate Clips SDK predicate references: {exc}")
 
         report["application_class_definitions"] = app_definitions
         report["dex_parse_errors"] = dex_errors
