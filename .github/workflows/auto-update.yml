@@ -277,6 +277,14 @@ jobs:
             exit 0
           fi
 
+          # Do not recompile quarantined upstream every six hours. A push or
+          # manual diagnostic build still produces a signed non-release artifact.
+          if [[ "$RUNTIME_QUARANTINED" == "true" && "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::VK Video $VERSION ($VERSION_CODE) is quarantined; use manual diagnostic build for testing."
+            exit 0
+          fi
+
           next_revision_tag() {
             local base="$1"
             local prefix="${base}."
