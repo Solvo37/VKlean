@@ -1,3 +1,9 @@
 {
-  "entries": []
+  "entries": [
+    {
+      "version_code": 53256,
+      "version_name": "1.166",
+      "reason": "2026-10-18: new upstream pending real-device verification of dedicated VK Clips tab; do not auto-publish before smoke test"
+    }
+  ]
 }
