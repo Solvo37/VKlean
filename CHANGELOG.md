@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — 2026-10-18
+
+VK Clips black-screen crash fix (pending physical-device verification):
+
+- confirmed on VKlean 1.165 (52788): `NoClassDefFoundError: Lzz0/c;` from the Clips feed producer (`ClipFeedListProducer.kt`) when opening the dedicated Clips tab;
+- removed the hard-coded R8-obfuscated helper `zz0.c.f(SdkVideoFile)`;
+- matched the real combined `SdkVideoAdInfo` + `SdkOrdAdsInfo` ad-marker predicate by its two semantic `SdkVideoFile` getter calls, independently of class/method renaming;
+- verified the old helpers differ across upstream builds: VK Video 1.165 `d01.c.c`, VK Video 1.166 `e01.c.c`;
+- patch building fails closed if the matching predicate changes; no version is cleared from runtime quarantine until the dedicated Clips tab passes real-device testing.
+
+
 ## 0.2.14 — 2026-10-03
 
 Authenticated Clips ad-path fix:
