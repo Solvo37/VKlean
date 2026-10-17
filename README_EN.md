@@ -4,14 +4,13 @@
 
 Open-source Morphe patches and signed ARM64 builds of VK Video with selected advertisements removed. Installs alongside the regular VK app.
 
-## Latest verified release
+## Latest published release — NOT device verified
 
-- **VKlean release:** `1.165.1` (published October 7, 2026)
-- **VK Video inside the APK:** `1.165` / Android `versionCode 52788`
-- **Files:** one signed `VK-Video-1.165.1-patched.apk` plus one `patches-1.165.1.mpp` Morphe bundle.
-- [Download latest APK](https://github.com/Solvo37/VKlean/releases/latest)
+- **VKlean release:** `1.166.0` (automatically published October 17, 2026)
+- **Upstream VK Video:** `1.166`, RuStore `versionCode 53253` (APKMirror also reports a `53256` variant)
+- [View 1.166.0](https://github.com/Solvo37/VKlean/releases/tag/1.166.0)
 
-**Attention:** VK Video `1.166` / `53256` is newer upstream but is runtime-quarantined pending real-device tests; a diagnostic artifact is not a verified public release.
+**Warning:** 1.166.0 passed static tests but **has not passed logged-in physical-device testing of the dedicated Clips tab**. Avoid Obtainium auto-updating to 1.166.0 until [Clips issue #21](https://github.com/Solvo37/VKlean/issues/21) and [release incident #23](https://github.com/Solvo37/VKlean/issues/23) are resolved. The previous 1.165.1 build also has a reported Clips-tab black screen. New 1.165/1.166 builds are blocked from public release by runtime quarantine.
 
 ## Install and updates
 
