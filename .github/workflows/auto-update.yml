@@ -243,9 +243,28 @@ jobs:
           set -euo pipefail
           QUARANTINED=false
 
-          if [[ -s ci/runtime-quarantine.json ]] && jq -e --argjson code "$VERSION_CODE" --arg name "$VERSION" '.entries[]? | select(.version_code == $code or .version_name == $name)' ci/runtime-quarantine.json >/dev/null; then
+          # Only an explicit version-wide quarantine (no code) blocks all variants.
+          # A code-scoped quarantine must not block a DIFFERENT, device-tested APK
+          # merely because VK gives both APKs the same versionName.
+          if [[ -s ci/runtime-quarantine.json ]] && jq -e --argjson code "$VERSION_CODE" --arg name "$VERSION" \
+            '.entries[]? | select(.version_code == $code or (.version_code == null and .version_name == $name))' \
+            ci/runtime-quarantine.json >/dev/null; then
             QUARANTINED=true
-            echo "::warning::VK Video $VERSION ($VERSION_CODE) is runtime-quarantined and must not be published."
+            echo "::warning::VK Video $VERSION ($VERSION_CODE) is explicitly quarantined."
+          fi
+
+          # Fail closed: static patch/signature tests do not qualify a new
+          # upstream for public release without a matching physical-device
+          # test record. Unapproved versions still allow manual diagnostic APKs.
+          if [[ "$QUARANTINED" == "false" ]]; then
+            if jq -e --argjson code "$VERSION_CODE" --arg name "$VERSION" \
+              '.entries[]? | select(.version_code == $code and .version_name == $name)' \
+              ci/runtime-verified.json >/dev/null; then
+              echo "::notice::Physically verified upstream: VK Video $VERSION ($VERSION_CODE)."
+            else
+              QUARANTINED=true
+              echo "::warning::No physical-device approval for VK Video $VERSION ($VERSION_CODE); public release blocked."
+            fi
           fi
 
           echo "quarantined=$QUARANTINED" >> "$GITHUB_OUTPUT"
@@ -712,6 +731,11 @@ jobs:
           cp "$APK" "$PUBLISH_APK"
           cp "$MPP" "$PUBLISH_MPP"
 
+          TEST_SUMMARY="$(jq -er --arg v "$VERSION" --argjson c "$VERSION_CODE" \
+            '.entries[] | select(.version_name == $v and .version_code == $c) | .test_summary' \
+            ci/runtime-verified.json)"
+          test -n "$TEST_SUMMARY"
+
           cat > dist/release-notes.md <<EOF
           ## VK Video $TAG
 
@@ -725,6 +749,7 @@ jobs:
           - применён текущий профиль удаления рекламы
           - Morphe STRIP_FAST → zipalign → APK Signature Scheme v3
           - статические compatibility gates пройдены
+          - проверка на устройстве: $TEST_SUMMARY
 
           В Release публикуются APK для Obtainium и .mpp для Morphe. Служебные отчёты остаются в GitHub Actions.
           EOF
