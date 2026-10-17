@@ -8,6 +8,16 @@ on:
         required: false
         default: false
         type: boolean
+      clip_mode:
+        description: 'Manual diagnostic APK only: omit Clips ad filters (never publishes a release)'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - without-sdk
+          - without-feed
+          - without-both
   schedule:
     - cron: '17 */6 * * *'
   push:
@@ -48,7 +58,7 @@ env:
 
 jobs:
   build:
-    if: github.repository == 'Solvo37/vk-video-morphe-patches' || github.event_name == 'workflow_dispatch'
+    if: github.repository == 'Solvo37/VKlean' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       HAS_SIGNING: ${{ secrets.ANDROID_KEYSTORE_B64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
@@ -251,14 +261,15 @@ jobs:
           USER_FORCE_REBUILD: ${{ inputs.force_rebuild || false }}
           PATCH_PROFILE_CHANGED: ${{ steps.patch_change.outputs.changed }}
           RUNTIME_QUARANTINED: ${{ steps.runtime.outputs.quarantined }}
+          CLIP_MODE: ${{ inputs.clip_mode || 'full' }}
         run: |
           set -euo pipefail
 
           FORCE_REBUILD=false
-          if [[ "$USER_FORCE_REBUILD" == "true" || "$PATCH_PROFILE_CHANGED" == "true" || "$RUNTIME_QUARANTINED" == "true" ]]; then
+          if [[ "$USER_FORCE_REBUILD" == "true" || "$PATCH_PROFILE_CHANGED" == "true" || "$RUNTIME_QUARANTINED" == "true" || "$CLIP_MODE" != "full" ]]; then
             FORCE_REBUILD=true
           fi
-          echo "Force rebuild: $FORCE_REBUILD (manual=$USER_FORCE_REBUILD, patch-profile=$PATCH_PROFILE_CHANGED)"
+          echo "Force rebuild: $FORCE_REBUILD (manual=$USER_FORCE_REBUILD, patch-profile=$PATCH_PROFILE_CHANGED, clip-mode=$CLIP_MODE)"
 
           if (( VERSION_CODE < BASELINE_VERSION_CODE )); then
             echo "build=false" >> "$GITHUB_OUTPUT"
@@ -417,21 +428,54 @@ jobs:
         continue-on-error: true
         env:
           MPP: ${{ steps.mpp.outputs.path }}
+          CLIP_MODE: ${{ inputs.clip_mode || 'full' }}
         run: |
           set -euo pipefail
 
-          "$JAVA_HOME/bin/java" -jar morphe.jar patch             -p "$MPP"             --force             --exclusive             -e "Fix install conflict with stock VK"             -e "Bypass native signature check"             -e "Disable in-app update"             -e "Remove video ads"             -e "Remove clip ads"             -e "Filter clip feed ads"             -e "Block midroll ads"             -e "Filter Clips SDK ads"             -e "Block deep midroll ads"             -e "Hide home showcase ads"             -e "Disable video ad repository"             -e "Disable ad-free subscription promo"             -e "Hide promoted banner content"             -e "Disable ad pixel tracking"             --bytecode-mode STRIP_FAST             --unsigned             -r dist/patch-result.json             -o dist/unsigned-patched.apk             dist/upstream-universal.apk
+          case "$CLIP_MODE" in
+            full|without-sdk|without-feed|without-both) ;;
+            *) echo "::error::Unknown Clips diagnostic mode: $CLIP_MODE"; exit 1 ;;
+          esac
+
+          PATCH_ARGS=()
+          while IFS= read -r patch; do
+            case "$CLIP_MODE:$patch" in
+              "without-sdk:Filter Clips SDK ads"|"without-both:Filter Clips SDK ads"|"without-feed:Filter clip feed ads"|"without-both:Filter clip feed ads") continue ;;
+            esac
+            PATCH_ARGS+=(-e "$patch")
+          done < <(jq -r '.patches[]' patches-list.json)
+
+          echo "Clips mode: $CLIP_MODE; selected patches: $((${#PATCH_ARGS[@]} / 2))"
+          "$JAVA_HOME/bin/java" -jar morphe.jar patch \
+            -p "$MPP" --force --exclusive "${PATCH_ARGS[@]}" \
+            --bytecode-mode STRIP_FAST --unsigned \
+            -r dist/patch-result.json -o dist/unsigned-patched.apk \
+            dist/upstream-universal.apk
 
       - name: Validate Morphe result and patched payload
         if: steps.decision.outputs.build == 'true' && steps.patch.outcome == 'success'
         id: static_gate
         continue-on-error: true
+        env:
+          CLIP_MODE: ${{ inputs.clip_mode || 'full' }}
         run: |
           set -euo pipefail
 
           jq -e '((.patchingSteps // []) | length) > 0 and all(.patchingSteps[]?; .success == true) and ((.failedPatches // []) | length == 0)' dist/patch-result.json >/dev/null
 
-          for patch in             "Fix install conflict with stock VK"             "Bypass native signature check"             "Disable in-app update"             "Remove video ads"             "Remove clip ads"             "Filter clip feed ads"             "Block midroll ads"             "Filter Clips SDK ads"             "Block deep midroll ads"             "Hide home showcase ads"             "Disable video ad repository"             "Disable ad-free subscription promo"             "Hide promoted banner content"             "Disable ad pixel tracking"; do
+          while IFS= read -r patch; do
+            case "$CLIP_MODE:$patch" in
+              "without-sdk:Filter Clips SDK ads"|"without-both:Filter Clips SDK ads"|"without-feed:Filter clip feed ads"|"without-both:Filter clip feed ads")
+                if jq -e --arg patch "$patch" 'any(.appliedPatches[]?; .name == $patch)' dist/patch-result.json >/dev/null; then
+                  echo "::error::Excluded Clips patch unexpectedly applied: $patch" >&2
+                  exit 1
+                fi
+                continue
+                ;;
+            esac
+            jq -e --arg patch "$patch" 'any(.appliedPatches[]?; .name == $patch)' dist/patch-result.json >/dev/null \
+              || { echo "::error::Required patch missing from Morphe report: $patch" >&2; exit 1; }
+          done < <(jq -r '.patches[]' patches-list.json)
             jq -e --arg patch "$patch"               'any(.appliedPatches[]?; .name == $patch)'               dist/patch-result.json >/dev/null               || { echo "Required patch missing from Morphe report: $patch" >&2; exit 1; }
           done
 
@@ -629,7 +673,7 @@ jobs:
         if: steps.decision.outputs.build == 'true' && always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: vk-video-${{ steps.upstream.outputs.version }}-${{ steps.upstream.outputs.version_code }}-build
+          name: vk-video-${{ steps.upstream.outputs.version }}-${{ steps.upstream.outputs.version_code }}-${{ inputs.clip_mode || 'full' }}-build
           path: |
             upstream.json
             dist/build-metadata.json
@@ -644,7 +688,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Publish clean GitHub Release
-        if: steps.decision.outputs.build == 'true' && steps.patch.outcome == 'success' && steps.static_gate.outcome == 'success' && env.HAS_SIGNING == 'true' && steps.runtime.outputs.quarantined != 'true'
+        if: steps.decision.outputs.build == 'true' && steps.patch.outcome == 'success' && steps.static_gate.outcome == 'success' && env.HAS_SIGNING == 'true' && steps.runtime.outputs.quarantined != 'true' && (inputs.clip_mode == '' || inputs.clip_mode == 'full')
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.upstream.outputs.version }}
@@ -709,7 +753,7 @@ jobs:
             }' > patches-bundle.json
 
       - name: Advance verified baseline
-        if: steps.decision.outputs.build == 'true' && steps.patch.outcome == 'success' && steps.static_gate.outcome == 'success' && env.HAS_SIGNING == 'true' && steps.runtime.outputs.quarantined != 'true'
+        if: steps.decision.outputs.build == 'true' && steps.patch.outcome == 'success' && steps.static_gate.outcome == 'success' && env.HAS_SIGNING == 'true' && steps.runtime.outputs.quarantined != 'true' && (inputs.clip_mode == '' || inputs.clip_mode == 'full')
         env:
           VERSION: ${{ steps.upstream.outputs.version }}
           VERSION_CODE: ${{ steps.upstream.outputs.version_code }}
