@@ -12,6 +12,7 @@ on:
       - 'gradle.properties'
       - 'patches-list.json'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/auto-update.yml'
   pull_request:
     paths:
       - 'patches/**'
@@ -22,6 +23,7 @@ on:
       - 'gradle.properties'
       - 'patches-list.json'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/auto-update.yml'
   workflow_dispatch:
 
 concurrency:
@@ -63,7 +65,24 @@ jobs:
           [[ "$(jq -r '.version' patches-list.json)" == "$VERSION" ]]
           python -m py_compile ci/select_upstream.py ci/verify_patched_apk.py ci/verify_manifest.py
           python -m json.tool ci/baseline.json >/dev/null
+          python -m json.tool ci/runtime-quarantine.json >/dev/null
           python -m json.tool patches-list.json >/dev/null
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          quarantine = json.loads(Path('ci/runtime-quarantine.json').read_text())['entries']
+          codes = [entry['version_code'] for entry in quarantine]
+          assert all(isinstance(code, int) and code > 0 for code in codes)
+          assert len(codes) == len(set(codes)), 'Duplicate runtime quarantine versionCode'
+
+          workflow = Path('.github/workflows/auto-update.yml').read_text()
+          expected = "if: github.repository == '" + os.environ['GITHUB_REPOSITORY'] + "' || github.event_name == 'workflow_dispatch'"
+          assert expected in workflow, 'Scheduled autobuild job is disabled by wrong repository guard'
+          assert 'clip_mode:' in workflow, 'Missing Clips diagnostic selector'
+          assert 'steps.runtime.outputs.quarantined != \'true\'' in workflow, 'Missing quarantine publish gate'
+          PY
 
       - name: Build Morphe bundle
         env:
