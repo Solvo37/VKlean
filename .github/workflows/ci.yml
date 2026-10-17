@@ -77,11 +77,30 @@ jobs:
           assert all(isinstance(code, int) and code > 0 for code in codes)
           assert len(codes) == len(set(codes)), 'Duplicate runtime quarantine versionCode'
 
+          verified = json.loads(Path('ci/runtime-verified.json').read_text())['entries']
+          assert verified, 'At least one device-tested upstream must be approved'
+          release_targets = []
+          for entry in verified:
+              name, code = entry['version_name'], entry['version_code']
+              assert isinstance(name, str) and name
+              assert isinstance(code, int) and code > 0
+              assert entry.get('verified_at') and entry.get('device')
+              assert entry.get('test_summary') and entry.get('evidence')
+              release_targets.append((name, code))
+              assert not any(
+                  q.get('version_code') == code or (
+                      q.get('version_code') is None and q.get('version_name') == name
+                  )
+                  for q in quarantine
+              ), 'Approved APK also in quarantine'
+          assert len(release_targets) == len(set(release_targets)), 'Duplicate approved upstream'
+
           workflow = Path('.github/workflows/auto-update.yml').read_text()
           expected = "if: github.repository == '" + os.environ['GITHUB_REPOSITORY'] + "' || github.event_name == 'workflow_dispatch'"
           assert expected in workflow, 'Scheduled autobuild job is disabled by wrong repository guard'
           assert 'clip_mode:' in workflow, 'Missing Clips diagnostic selector'
           assert 'steps.runtime.outputs.quarantined != \'true\'' in workflow, 'Missing quarantine publish gate'
+          assert 'ci/runtime-verified.json' in workflow, 'Missing physically verified upstream release gate'
           PY
 
       - name: Build Morphe bundle
