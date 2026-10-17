@@ -238,13 +238,14 @@ jobs:
         id: runtime
         env:
           VERSION_CODE: ${{ steps.upstream.outputs.version_code }}
+          VERSION: ${{ steps.upstream.outputs.version }}
         run: |
           set -euo pipefail
           QUARANTINED=false
 
-          if [[ -s ci/runtime-quarantine.json ]] && jq -e --argjson code "$VERSION_CODE" '.entries[]? | select(.version_code == $code)' ci/runtime-quarantine.json >/dev/null; then
+          if [[ -s ci/runtime-quarantine.json ]] && jq -e --argjson code "$VERSION_CODE" --arg name "$VERSION" '.entries[]? | select(.version_code == $code or .version_name == $name)' ci/runtime-quarantine.json >/dev/null; then
             QUARANTINED=true
-            echo "::warning::VK Video versionCode $VERSION_CODE is runtime-quarantined and must not be published."
+            echo "::warning::VK Video $VERSION ($VERSION_CODE) is runtime-quarantined and must not be published."
           fi
 
           echo "quarantined=$QUARANTINED" >> "$GITHUB_OUTPUT"
